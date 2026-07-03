@@ -1,0 +1,161 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Send, Save } from "lucide-react";
+import {
+  updateEventNotificationAction,
+  sendEventNotificationAction,
+} from "@/lib/actions/events";
+import { useConfirmAction } from "@/components/ui/useConfirmAction";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/Select";
+import dynamic from "next/dynamic";
+
+const RichTextEditor = dynamic(
+  () => import("@/components/ui/RichTextEditor").then((m) => ({ default: m.RichTextEditor })),
+  { ssr: false },
+);
+import { Button } from "@/components/ui/Button";
+import type { Block } from "@/lib/blocks/types";
+
+function blocksToHtml(blocks: Block[]): string {
+  const rt = blocks.find((b) => b.type === "richText");
+  return rt ? (rt.data as { html: string }).html : "";
+}
+function htmlToBlocks(html: string): Block[] {
+  return [{ id: "body", type: "richText", data: { html } }];
+}
+
+type Initial = {
+  id: string;
+  type: "ANNOUNCEMENT" | "REMINDER";
+  subject: string;
+  sendAt: string;
+  content: Block[];
+  status: string;
+};
+
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function NotificationEditor({ initial }: { initial: Initial }) {
+  const readOnly = initial.status === "SENT" || initial.status === "SENDING";
+  const [type, setType] = useState(initial.type);
+  const [subject, setSubject] = useState(initial.subject);
+  const [sendAt, setSendAt] = useState(toLocalInput(initial.sendAt));
+  const [contentHtml, setContentHtml] = useState(() => blocksToHtml(initial.content));
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const confirmAction = useConfirmAction();
+
+  const save = () => {
+    setError(null);
+    start(async () => {
+      try {
+        await updateEventNotificationAction({
+          id: initial.id,
+          type,
+          subject,
+          sendAt: new Date(sendAt).toISOString(),
+          content: htmlToBlocks(contentHtml),
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to save");
+      }
+    });
+  };
+
+  const sendNow = async () => {
+    const ok = await confirmAction({
+      title: "Send notification",
+      description: "Send this notification now to all eligible subscribers?",
+      confirmLabel: "Send now",
+      variant: "primary",
+    });
+    if (!ok) return;
+    start(async () => {
+      try {
+        await sendEventNotificationAction({ id: initial.id });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to send");
+      }
+    });
+  };
+
+  return (
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[1fr_280px]">
+      <section className="space-y-4">
+        <div className="grid gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-card)] p-5 md:grid-cols-[160px_1fr_220px]">
+          <div className="block space-y-1.5">
+            <span className="text-sm font-medium">Kind</span>
+            <Select value={type} onValueChange={(v) => setType(v as "ANNOUNCEMENT" | "REMINDER")} disabled={readOnly}>
+              <SelectTrigger className="w-full" aria-label="Notification kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANNOUNCEMENT">Announcement</SelectItem>
+                <SelectItem value="REMINDER">Reminder</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Subject</span>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={readOnly} className={inputCls} />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Send at</span>
+            <input
+              type="datetime-local"
+              value={sendAt}
+              onChange={(e) => setSendAt(e.target.value)}
+              disabled={readOnly}
+              className={inputCls}
+            />
+          </label>
+        </div>
+
+        <div>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-fg)]">
+            Content
+          </h2>
+          {readOnly ? (
+            <p className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-muted)] p-4 text-sm text-[var(--color-muted-fg)]">
+              This notification has been sent and can no longer be edited.
+            </p>
+          ) : (
+            <RichTextEditor html={contentHtml} onChange={setContentHtml} />
+          )}
+        </div>
+      </section>
+
+      <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <div className="space-y-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-card)] p-5">
+          {error ? (
+            <p role="alert" className="rounded-[var(--radius-sm)] bg-[rgb(var(--token-danger)/0.10)] p-2 text-sm text-[var(--color-danger)]">
+              {error}
+            </p>
+          ) : null}
+          <Button onClick={save} disabled={pending || readOnly} className="w-full">
+            <Save className="h-4 w-4" /> {pending ? "Saving…" : "Save"}
+          </Button>
+          {!readOnly ? (
+            <Button variant="outline" onClick={sendNow} disabled={pending} className="w-full">
+              <Send className="h-4 w-4" /> Send now
+            </Button>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full rounded-[var(--radius-md)] border border-[var(--color-input)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-ring)] disabled:opacity-60";

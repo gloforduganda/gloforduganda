@@ -1,0 +1,144 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { savePaymentConfigAction } from "@/lib/actions/paymentConfig";
+import { Button } from "@/components/ui/Button";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/Select";
+
+type ProviderId = "PESAPAL" | "MTN_MOMO" | "AIRTEL_MONEY";
+
+type Initial = {
+  isEnabled: boolean;
+  mode: string;
+  publicConfig: Record<string, string | undefined>;
+};
+
+export function PaymentConfigForm({
+  provider,
+  initial,
+}: {
+  provider: ProviderId;
+  initial: Initial;
+}) {
+  const [isEnabled, setIsEnabled] = useState(initial.isEnabled);
+  const [mode, setMode] = useState<"sandbox" | "live">(
+    (initial.mode as "sandbox" | "live") ?? "sandbox",
+  );
+  const [fields, setFields] = useState<Record<string, string>>(() => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(initial.publicConfig)) if (v) out[k] = v;
+    return out;
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const setField = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setFields((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = () => {
+    setError(null);
+    start(async () => {
+      try {
+        await savePaymentConfigAction({
+          provider,
+          isEnabled,
+          mode,
+          ...fields,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to save");
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={isEnabled}
+            onChange={(e) => setIsEnabled(e.target.checked)}
+          />
+          Enable this provider
+        </label>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Mode</span>
+          <Select value={mode} onValueChange={(v) => setMode(v as "sandbox" | "live")}>
+            <SelectTrigger className="w-[120px] h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sandbox">Sandbox</SelectItem>
+              <SelectItem value="live">Live</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-3">{renderFields(provider, fields, setField)}</div>
+
+      {error ? (
+        <p role="alert" className="rounded-[var(--radius-sm)] bg-[rgb(var(--token-danger)/0.10)] p-2 text-sm text-[var(--color-danger)]">
+          {error}
+        </p>
+      ) : null}
+
+      <Button onClick={submit} disabled={pending} className="w-full">
+        {pending ? "Saving\u2026" : "Save configuration"}
+      </Button>
+    </div>
+  );
+}
+
+function renderFields(
+  provider: ProviderId,
+  fields: Record<string, string>,
+  setField: (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => void,
+) {
+  const common = (label: string, key: string, type: "text" | "password" | "url" = "password", hint?: string) => (
+    <label key={key} className="block space-y-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      {hint ? <span className="block text-xs text-[var(--color-muted-fg)]">{hint}</span> : null}
+      <input
+        type={type}
+        value={fields[key] ?? ""}
+        onChange={setField(key)}
+        autoComplete="off"
+        className="w-full rounded-[var(--radius-md)] border border-[var(--color-input)] bg-[var(--color-bg)] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-ring)]"
+      />
+    </label>
+  );
+
+  switch (provider) {
+    case "PESAPAL":
+      return [
+        common("Consumer key", "consumerKey", "text"),
+        common("Consumer secret", "consumerSecret", "password"),
+        common("Registered IPN id", "ipnId", "text", "From POST /URLSetup/RegisterIPN"),
+        common("Country (ISO-2)", "country", "text"),
+      ];
+    case "MTN_MOMO":
+      return [
+        common("Subscription key", "subscriptionKey", "password", "Ocp-Apim-Subscription-Key"),
+        common("API user id (UUID)", "apiUser", "text"),
+        common("API key", "apiKey", "password"),
+        common("Target environment", "targetEnvironment", "text", "e.g. mtnuganda, mtnrwanda"),
+        common("Currency (ISO-3)", "currency", "text"),
+        common("Callback host (https)", "callbackHost", "url"),
+      ];
+    case "AIRTEL_MONEY":
+      return [
+        common("Client id", "clientId", "text"),
+        common("Client secret", "clientSecret", "password"),
+        common("Country (ISO-2)", "country", "text"),
+        common("Currency (ISO-3)", "currency", "text"),
+      ];
+  }
+}

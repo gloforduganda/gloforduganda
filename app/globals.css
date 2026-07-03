@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+/* ─── CKEditor 5 — prevent toolbar from overflowing page width ─── */
+.ck.ck-editor {
+  max-width: 100%;
+  min-width: 0;
+}
+/* Sticky panel must not exceed its container */
+.ck.ck-editor__top .ck-sticky-panel,
+.ck.ck-editor__top .ck-sticky-panel .ck-sticky-panel__content {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+/* The toolbar items flex row — wrap instead of overflow */
+.ck.ck-toolbar .ck-toolbar__items {
+  flex-wrap: wrap !important;
+}
+.ck.ck-toolbar {
+  flex-wrap: wrap !important;
+  max-width: 100% !important;
+}
+.ck.ck-editor__main .ck-editor__editable {
+  min-height: 220px;
+}
+
+/* ─── Smooth scroll for entire page ─── */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ─── RTL support ─── */
+html[dir="rtl"] {
+  font-family: "IBM Plex Sans Arabic", var(--font-inter), system-ui, sans-serif;
+}
+
+html[dir="rtl"] .rtl\:flip {
+  transform: scaleX(-1);
+}
+
+/* ────────────────────────────────────────────────────────────
+   Design System — Gloford Purple Brand
+
+   Color format: space-separated RGB triplets (R G B)
+   Usage: rgb(var(--token) / <alpha>)
+
+   Theme tokens are injected as CSS custom properties on <html>
+   by app/layout.tsx from the Theme DB row. Static brand-scale
+   colors are defined directly in @theme inline.
+   ──────────────────────────────────────────────────────────── */
+
+/* Semantic color variables — defined in plain :root so Tailwind v4
+   doesn't absorb them into its theme system. These use CSS custom
+   property references to --token-* which are overridden by layout.tsx
+   at runtime from the DB. */
+:root {
+  --color-bg:           rgb(var(--token-bg));
+  --color-fg:           rgb(var(--token-fg));
+  --color-muted:        rgb(var(--token-muted));
+  --color-muted-fg:     rgb(var(--token-muted-fg));
+  --color-card:         rgb(var(--token-card));
+  --color-card-fg:      rgb(var(--token-card-fg));
+  --color-input:        rgb(var(--token-input));
+  --color-ring:         rgb(var(--token-ring));
+  --color-primary:      rgb(var(--token-primary));
+  --color-primary-fg:   rgb(var(--token-primary-fg));
+  --color-secondary:    rgb(var(--token-secondary));
+  --color-secondary-fg: rgb(var(--token-secondary-fg));
+  --color-accent:       rgb(var(--token-accent));
+  --color-accent-fg:    rgb(var(--token-accent-fg));
+  --color-danger:       rgb(var(--token-danger));
+  --color-danger-fg:    rgb(var(--token-danger-fg));
+  --color-success:      rgb(var(--token-success));
+  --color-success-fg:   rgb(var(--token-success-fg));
+  --color-surface-2:    rgb(var(--token-surface-2));
+  --color-border:       rgb(var(--token-hairline) / var(--hairline-a));
+
+  /* Brand scale */
+  --color-brand:       rgb(var(--token-primary));
+  --color-brand-light: rgb(var(--token-accent));
+  --color-brand-dark:  rgb(var(--token-primary));
+}
+
+@theme {
+  /* Typography — driven by theme tokens, fallback to loaded fonts */
+  --font-sans:    var(--token-font-sans, var(--font-inter));
+  --font-serif:   var(--token-font-serif, var(--font-playfair));
+  --font-display: var(--token-font-serif, var(--font-playfair));
+
+  /* Radius */
+  --radius-sm: var(--token-radius-sm);
+  --radius-md: var(--token-radius-md);
+  --radius-lg: var(--token-radius-lg);
+}
+
+/* ─── Light mode defaults (RGB triplets) ─── */
+:root {
+  --font-inter:     'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-playfair:  'Playfair Display', ui-serif, Georgia, serif;
+
+  --token-bg:           250 247 255;
+  --token-surface-2:    238 230 252;
+  --token-card:         255 255 255;
+  --token-muted:        242 236 252;
+  --token-fg:           20 10 35;
+  --token-muted-fg:     110 90 140;
+  --token-hairline:     123 45 187;
+  --hairline-a:         0.10;
+  --token-ring:         123 45 187;
+  --token-input:        235 225 248;
+
+  --token-primary:      123 45 187;
+  --token-primary-fg:   255 255 255;
+  --token-secondary:    235 225 248;
+  --token-secondary-fg: 20 10 35;
+  --token-card-fg:      20 10 35;
+  --token-accent:       155 80 220;
+  --token-accent-fg:    255 255 255;
+  --token-danger:       239 68 68;
+  --token-danger-fg:    255 255 255;
+  --token-success:      34 197 94;
+  --token-success-fg:   255 255 255;
+
+  --token-radius-sm: 0.25rem;
+  --token-radius-md: 0.5rem;
+  --token-radius-lg: 0.75rem;
+}
+
+/* ─── Dark mode (class-based via next-themes) ─── */
+.dark {
+  --token-bg:           10 10 11;
+  --token-surface-2:    21 23 28;
+  --token-card:         21 23 28;
+  --token-muted:        36 38 45;
+  --token-fg:           247 247 248;
+  --token-muted-fg:     169 170 179;
+  --token-hairline:     255 255 255;
+  --hairline-a:         0.08;
+  --token-input:        36 38 45;
+
+  --token-primary:      100 35 160;
+  --token-primary-fg:   255 255 255;
+  --token-secondary:    21 23 28;
+  --token-secondary-fg: 247 247 248;
+  --token-card-fg:      247 247 248;
+  --token-accent:       140 70 210;
+  --token-accent-fg:    10 10 11;
+  --token-ring:         100 35 160;
+}
+
+/* ─── Base layer ─── */
+html {
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-inter);
+  background: rgb(var(--token-bg));
+  color: rgb(var(--token-fg));
+  font-feature-settings: "ss01", "cv11", "ss07";
+  letter-spacing: -0.01em;
+  min-height: 100dvh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-inter);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background: rgb(var(--token-primary) / 0.18);
+  color: inherit;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Admin sidebar smart scrollbar ─── */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s;
+}
+.sidebar-nav:hover {
+  scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+}
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.15);
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

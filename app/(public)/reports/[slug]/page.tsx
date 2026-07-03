@@ -1,0 +1,49 @@
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { BlockRenderer } from "@/components/blocks/BlockRenderer";
+import { getPublishedCollectionPage } from "@/lib/services/pages";
+import { isAppError } from "@/lib/errors";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://gloford.org";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  try {
+    const page = await getPublishedCollectionPage("report", slug);
+    const title = page.seoTitle ?? page.title;
+    const description = page.seoDesc ?? undefined;
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        type: "article",
+        url: `${APP_URL}/reports/${slug}`,
+        images: [{ url: "/logo.png", width: 512, height: 512, alt: "Gloford" }],
+      },
+      twitter: { card: "summary_large_image", images: ["/logo.png"] },
+    };
+  } catch {
+    return {};
+  }
+}
+
+export default async function ReportPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  try {
+    const page = await getPublishedCollectionPage("report", slug);
+    return <BlockRenderer blocks={page.blocks} />;
+  } catch (e) {
+    if (isAppError(e) && e.status === 404) notFound();
+    throw e;
+  }
+}

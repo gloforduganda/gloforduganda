@@ -1,0 +1,1374 @@
+// ────────────────────────────────────────────────────────────
+// White-label NGO platform — single-tenant Prisma schema.
+//
+// This schema assumes exactly one org-per-deployment. Branding,
+// identity, and provider configuration are read from the database
+// but seeded from env vars on first boot (see prisma/seed.ts).
+// ────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ════════════════════════════════════════════════════════════
+// IDENTITY & AUTH (Auth.js v5 compatible)
+// ════════════════════════════════════════════════════════════
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  passwordHash  String?
+  roleId        String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  role          Role?           @relation(fields: [roleId], references: [id])
+  accounts      Account[]
+  sessions      Session[]
+  profile       UserProfile?
+  activity      UserActivity[]
+  grants        ResourceGrant[] @relation("GrantedTo")
+  grantsGiven   ResourceGrant[] @relation("GrantedBy")
+  postsAuthored Post[]          @relation("PostAuthor")
+  mediaUploads         Media[]              @relation("MediaUploader")
+  newslettersCreated   Newsletter[]         @relation("NewsletterCreator")
+  careersReviewed      CareerApplication[]  @relation("CareerReviewer")
+  partnersReviewed     PartnerApplication[] @relation("PartnerReviewer")
+  passwordResetTokens  PasswordResetToken[]
+
+  @@index([email])
+  @@index([roleId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model UserProfile {
+  userId        String   @id
+  firstName     String?
+  lastName      String?
+  phone         String?
+  country       String?
+  bio           String?
+  interests     String[] @default([])
+  preferences   Json     @default("{}")
+  volunteerInfo Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// RBAC
+// ════════════════════════════════════════════════════════════
+
+model Role {
+  id          String   @id @default(cuid())
+  name        RoleName @unique
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  permissions RolePermission[]
+  users       User[]
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model Permission {
+  id           String    @id @default(cuid())
+  key          String    @unique
+  module       String
+  action       String
+  resourceType String?
+  scope        PermScope @default(GLOBAL)
+  description  String?
+
+  roles RolePermission[]
+
+  @@index([module, action])
+}
+
+enum PermScope {
+  GLOBAL
+  OWN
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model ResourceGrant {
+  id           String    @id @default(cuid())
+  userId       String
+  resourceType String
+  resourceId   String
+  action       String
+  grantedById  String
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user      User @relation("GrantedTo", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User @relation("GrantedBy", fields: [grantedById], references: [id])
+
+  @@unique([userId, resourceType, resourceId, action])
+  @@index([resourceType, resourceId])
+}
+
+// ════════════════════════════════════════════════════════════
+// CONTENT
+// ════════════════════════════════════════════════════════════
+
+enum ContentStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+model Page {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  seoTitle    String?
+  seoDesc     String?
+  blocks      Json          @default("[]")
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  @@index([status])
+}
+
+model Program {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  summary      String
+  body         Json          @default("[]")
+  coverMediaId String?
+  status       ContentStatus @default(DRAFT)
+  order        Int           @default(0)
+  seoTitle     String?
+  seoDesc      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  cover     Media?     @relation(fields: [coverMediaId], references: [id], onDelete: SetNull)
+  campaigns Campaign[]
+
+  @@index([status])
+  @@index([order])
+}
+
+model Post {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  excerpt      String?
+  body         Json          @default("[]")
+  coverMediaId String?
+  authorId     String
+  status       ContentStatus @default(DRAFT)
+  publishedAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  seoTitle String?
+  seoDesc  String?
+
+  cover  Media?    @relation("PostCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  author User      @relation("PostAuthor", fields: [authorId], references: [id])
+  tags   PostTag[]
+
+  @@index([status, publishedAt])
+  @@index([authorId])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  updatedAt DateTime @updatedAt
+
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+}
+
+model Media {
+  id            String    @id @default(cuid())
+  url           String
+  key           String    @unique
+  mime          String
+  width         Int?
+  height        Int?
+  sizeBytes     Int
+  alt           String?
+  uploadedById  String?
+  showInGallery Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  uploadedBy User?     @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  programs   Program[]
+  projects   Project[] @relation("ProjectCover")
+  posts      Post[]    @relation("PostCover")
+  events     Event[]   @relation("EventCover")
+
+  @@index([uploadedById])
+  @@index([showInGallery])
+  @@index([createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// DONATIONS
+// ════════════════════════════════════════════════════════════
+
+enum PaymentProvider {
+  PESAPAL
+  MTN_MOMO
+  AIRTEL_MONEY
+  STRIPE
+}
+
+enum DonationStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum DonationType {
+  ONE_TIME
+  RECURRING
+}
+
+model Campaign {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  description String
+  goalCents   Int?
+  currency    String    @default("USD")
+  startsAt    DateTime?
+  endsAt      DateTime?
+  programId   String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  program   Program?   @relation(fields: [programId], references: [id], onDelete: SetNull)
+  donations Donation[]
+
+  @@index([isActive])
+}
+
+model Donor {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  phone     String?
+  country   String?
+  createdAt DateTime @default(now())
+
+  donations Donation[]
+}
+
+model Donation {
+  id               String          @id @default(cuid())
+  donorId          String?
+  campaignId       String?
+  amountCents      Int
+  currency         String          @default("USD")
+  provider         PaymentProvider
+  providerRef      String          @unique
+  status           DonationStatus  @default(PENDING)
+  type             DonationType    @default(ONE_TIME)
+  subscriptionId   String?
+  receiptUrl       String?
+  refundedAt       DateTime?
+  refundedById     String?
+  refundReason     String?
+  providerRefundId String?
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+  completedAt      DateTime?
+
+  donor    Donor?    @relation(fields: [donorId], references: [id], onDelete: SetNull)
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([donorId])
+  @@index([campaignId])
+}
+
+// ════════════════════════════════════════════════════════════
+// PAYMENT PROVIDER CONFIGURATION
+// One row per provider. Secrets encrypted at rest with AES-256-GCM;
+// encryption key in ENCRYPTION_KEY env var.
+// ════════════════════════════════════════════════════════════
+
+model PaymentConfiguration {
+  id               String          @id @default(cuid())
+  provider         PaymentProvider @unique
+  isEnabled        Boolean         @default(false)
+  mode             String          @default("sandbox") // "sandbox" | "live"
+  publicConfig     Json            @default("{}")
+  encryptedSecrets String?
+  lastVerifiedAt   DateTime?
+  verifyError      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([isEnabled])
+}
+
+// ════════════════════════════════════════════════════════════
+// SETTINGS & THEME (singleton rows)
+// Constrained to exactly one row via a boolean `singleton` column
+// with a unique index. Service layer hard-codes the lookup to the
+// single row.
+// ════════════════════════════════════════════════════════════
+
+model SiteSettings {
+  id               String   @id @default("singleton")
+  siteName         String
+  logoUrl          String?
+  loginBgUrl       String?
+  contact          Json     @default("{}")
+  socials          Json     @default("{}")
+  seo              Json     @default("{}")
+  foundingYear     Int      @default(2017)
+  donationsEnabled Boolean  @default(true)
+  campaignsEnabled Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+}
+
+model Theme {
+  id         String       @id @default("singleton")
+  colors     Json         @default("{}")
+  typography Json         @default("{}")
+  radius     Json         @default("{}")
+  shadows    Json         @default("{}")
+  custom     Json?
+  presetId   String?
+  preset     ThemePreset? @relation("ThemeActivePreset", fields: [presetId], references: [id], onDelete: SetNull)
+  updatedAt  DateTime     @updatedAt
+}
+
+model ThemePreset {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  slug       String   @unique
+  colors     Json     @default("{}")
+  typography Json     @default("{}")
+  radius     Json     @default("{}")
+  shadows    Json     @default("{}")
+  builtIn    Boolean  @default(false)
+  order      Int      @default(0)
+  themes     Theme[]  @relation("ThemeActivePreset")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([builtIn, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// NEWSLETTER & SUBSCRIBERS
+// ════════════════════════════════════════════════════════════
+
+enum SubscriberStatus {
+  PENDING
+  ACTIVE
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+enum NewsletterStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELED
+}
+
+enum SendStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  FAILED
+}
+
+model Subscriber {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String?
+  status          SubscriberStatus @default(PENDING)
+  source          String?
+  confirmedAt     DateTime?
+  unsubToken      String           @unique
+  preferences     Json             @default("{\"newsletters\":true,\"campaigns\":true,\"events\":true}")
+  engagementScore Int              @default(50)
+  lastEngagedAt   DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  segments    SubscriberSegment[]
+  logs        NewsletterLog[]
+  events      SubscriberEvent[]
+  enrollments CampaignEnrollment[]
+
+  @@index([status])
+}
+
+model Newsletter {
+  id             String           @id @default(cuid())
+  title          String
+  subject        String
+  subjectB       String?
+  abTestPercent  Int?             @default(20)
+  abWinner       String?
+  preheader      String?
+  content        Json             @default("[]")
+  status         NewsletterStatus @default(DRAFT)
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  segmentIds     String[]         @default([])
+  createdById    String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  createdBy User            @relation("NewsletterCreator", fields: [createdById], references: [id])
+  logs      NewsletterLog[]
+
+  @@index([createdById])
+
+  @@index([status, scheduledAt])
+}
+
+model NewsletterLog {
+  id            String     @id @default(cuid())
+  newsletterId  String
+  subscriberId  String
+  providerMsgId String?
+  status        SendStatus @default(QUEUED)
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bouncedAt     DateTime?
+  error         String?
+  metadata      Json?
+  createdAt     DateTime   @default(now())
+
+  newsletter Newsletter @relation(fields: [newsletterId], references: [id], onDelete: Cascade)
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([newsletterId, subscriberId])
+  @@index([status])
+  @@index([providerMsgId])
+}
+
+// ════════════════════════════════════════════════════════════
+// SEGMENTS & EMAIL AUTOMATION
+// ════════════════════════════════════════════════════════════
+
+enum SegmentSource {
+  MANUAL
+  AUTO
+  EVENT
+}
+
+enum CampaignTrigger {
+  ON_SIGNUP
+  ON_DONATION
+  SCHEDULED
+  MANUAL
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELED
+  FAILED
+}
+
+model Segment {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  rules       Json?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  subscribers SubscriberSegment[]
+  campaigns   EmailCampaign[]     @relation("CampaignSegments")
+  events      Event[]             @relation("EventSegments")
+}
+
+model SubscriberSegment {
+  subscriberId String
+  segmentId    String
+  source       SegmentSource @default(MANUAL)
+  addedAt      DateTime      @default(now())
+
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  segment    Segment    @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@id([subscriberId, segmentId])
+  @@index([segmentId])
+}
+
+model SubscriberEvent {
+  id           String   @id @default(cuid())
+  subscriberId String
+  type         String
+  payload      Json?
+  createdAt    DateTime @default(now())
+
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@index([subscriberId, type, createdAt])
+  @@index([type, createdAt])
+}
+
+model EmailCampaign {
+  id            String          @id @default(cuid())
+  name          String
+  description   String?
+  trigger       CampaignTrigger
+  triggerConfig Json?
+  isActive      Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  segments    Segment[]            @relation("CampaignSegments")
+  emails      CampaignEmail[]
+  enrollments CampaignEnrollment[]
+
+  @@index([trigger, isActive])
+}
+
+model CampaignEmail {
+  id           String   @id @default(cuid())
+  campaignId   String
+  stepOrder    Int
+  subject      String
+  preheader    String?
+  content      Json     @default("[]")
+  delayMinutes Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  campaign EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, stepOrder])
+}
+
+model CampaignEnrollment {
+  id           String           @id @default(cuid())
+  campaignId   String
+  subscriberId String
+  currentStep  Int              @default(0)
+  status       EnrollmentStatus @default(ACTIVE)
+  nextSendAt   DateTime?
+  enrolledAt   DateTime         @default(now())
+  completedAt  DateTime?
+
+  campaign   EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  subscriber Subscriber    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, subscriberId])
+  @@index([status, nextSendAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// EVENTS
+// ════════════════════════════════════════════════════════════
+
+enum EventNotifType {
+  ANNOUNCEMENT
+  REMINDER
+}
+
+model Event {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  description  String
+  descriptionBlocks Json     @default("[]")
+  startsAt     DateTime
+  endsAt       DateTime?
+  location     String?
+  coverMediaId String?
+  isPublic     Boolean       @default(true)
+  status       ContentStatus @default(PUBLISHED)
+  capacity     Int?
+  seoTitle     String?
+  seoDesc      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  cover          Media?              @relation("EventCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
+  segments       Segment[]           @relation("EventSegments")
+  notifications  EventNotification[]
+  registrations  EventRegistration[]
+
+  @@index([startsAt])
+  @@index([status])
+}
+
+model EventRegistration {
+  id           String             @id @default(cuid())
+  eventId      String
+  email        String
+  name         String?
+  status       EventRsvpStatus    @default(GOING)
+  registeredAt DateTime           @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, email])
+  @@index([eventId, status])
+}
+
+enum EventRsvpStatus {
+  GOING
+  INTERESTED
+  CANCELED
+}
+
+model EventNotification {
+  id      String           @id @default(cuid())
+  eventId String
+  type    EventNotifType
+  subject String
+  content Json             @default("[]")
+  sendAt  DateTime
+  status  NewsletterStatus @default(DRAFT)
+  sentAt  DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([status, sendAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════════════════
+
+enum NavLocation {
+  HEADER
+  FOOTER
+  ADMIN_SIDEBAR
+}
+
+model NavItem {
+  id                 String      @id @default(cuid())
+  location           NavLocation
+  parentId           String?
+  label              String
+  href               String?
+  pageId             String?
+  order              Int         @default(0)
+  requiredPermission String?
+  isActive           Boolean     @default(true)
+
+  parent   NavItem?  @relation("NavTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children NavItem[] @relation("NavTree")
+
+  @@index([location, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// FEATURE FLAGS
+// ════════════════════════════════════════════════════════════
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  isEnabled   Boolean  @default(false)
+  rules       Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// OBSERVABILITY (audit, versioning, dead-letter, webhooks)
+// ════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  userRole      String?
+  action        String
+  module        String
+  entityType    String?
+  entityId      String?
+  diff          Json?
+  ipAddress     String?
+  geoCountry    String?
+  geoCity       String?
+  userAgent     String?
+  deviceType    String?
+  os            String?
+  browser       String?
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module, action, createdAt])
+  @@index([userId, createdAt])
+  @@index([correlationId])
+}
+
+model Version {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  snapshot    Json
+  diff        Json?
+  version     Int
+  createdById String
+  createdAt   DateTime @default(now())
+  reason      String?
+
+  @@unique([entityType, entityId, version])
+  @@index([entityType, createdAt])
+}
+
+enum DLStatus {
+  PENDING
+  RETRIED
+  RESOLVED
+  IGNORED
+}
+
+model DeadLetter {
+  id           String    @id @default(cuid())
+  source       String
+  eventType    String
+  payload      Json
+  error        String
+  attempts     Int       @default(0)
+  status       DLStatus  @default(PENDING)
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  @@index([status, createdAt])
+  @@index([source])
+}
+
+// ════════════════════════════════════════════════════════════
+// RATE LIMITING
+// ════════════════════════════════════════════════════════════
+
+model RateLimitHit {
+  id         String   @id @default(cuid())
+  bucket     String
+  identifier String
+  count      Int      @default(0)
+  windowEnd  DateTime
+
+  @@unique([bucket, identifier, windowEnd])
+  @@index([bucket, identifier])
+  @@index([windowEnd])
+}
+
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  provider        String
+  providerEventId String
+  eventType       String
+  payload         Json
+  processedAt     DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([provider, createdAt])
+}
+
+// ════════════════════════════════════════════════════════════
+// HERO SLIDES (homepage carousel)
+// ════════════════════════════════════════════════════════════
+
+model HeroSlide {
+  id         String   @id @default(cuid())
+  title      String
+  subtitle   String?
+  ctaLabel   String?
+  ctaHref    String?
+  imageUrl   String
+  imageAlt   String?
+  order      Int      @default(0)
+  durationMs Int      @default(3000)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// TESTIMONIALS
+// ════════════════════════════════════════════════════════════
+
+model Testimonial {
+  id         String   @id @default(cuid())
+  quote      String
+  authorName String
+  authorRole String?
+  authorOrg  String?
+  avatarUrl  String?
+  rating     Int?     @default(5)
+  isActive   Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// LEADER MESSAGES (CEO, Board Chairman, etc.)
+// ════════════════════════════════════════════════════════════
+
+model LeaderMessage {
+  id         String   @id @default(cuid())
+  leaderName String
+  title      String
+  role       String
+  photoUrl   String?
+  message    String   @db.Text
+  signature  String?
+  isActive   Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// TEAM MEMBERS (Leadership page)
+// ════════════════════════════════════════════════════════════
+
+model TeamMember {
+  id          String   @id @default(cuid())
+  name        String
+  role        String
+  bio         String?  @db.Text
+  photoUrl    String?
+  email       String?
+  phone       String?
+  department  String?
+  socialLinks Json     @default("{}")
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, order])
+  @@index([department])
+}
+
+// ════════════════════════════════════════════════════════════
+// SITE STATISTICS (animated counters)
+// ════════════════════════════════════════════════════════════
+
+model SiteStatistic {
+  id        String   @id @default(cuid())
+  label     String
+  value     String
+  icon      String?
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// MILESTONES (history timeline)
+// ════════════════════════════════════════════════════════════
+
+model Milestone {
+  id          String   @id @default(cuid())
+  year        String
+  title       String
+  description String   @db.Text
+  imageUrl    String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// SITE IMAGES (page-specific CMS images)
+// Key-value pairs: "who-we-are-hero" → url, etc.
+// ════════════════════════════════════════════════════════════
+
+model SiteImage {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  url       String
+  alt       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// SERVICE AREAS (homepage "What We Do" cards)
+// ════════════════════════════════════════════════════════════
+
+model ServiceArea {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  icon        String   @default("BookOpen")
+  color       String   @default("from-blue-500 to-blue-600")
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// TRANSLATIONS (DB overrides for i18n strings)
+// ════════════════════════════════════════════════════════════
+
+model Translation {
+  id        String   @id @default(cuid())
+  locale    String
+  key       String
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@unique([locale, key])
+  @@index([locale])
+}
+
+// ════════════════════════════════════════════════════════════
+// CAREERS
+// ════════════════════════════════════════════════════════════
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  VOLUNTEER
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  REVIEWING
+  SHORTLISTED
+  INTERVIEW
+  OFFERED
+  REJECTED
+  WITHDRAWN
+}
+
+model Career {
+  id                  String    @id @default(cuid())
+  title               String
+  slug                String    @unique
+  department          String
+  location            String
+  type                JobType   @default(FULL_TIME)
+  description         String    @db.Text
+  requirements        Json      @default("[]")
+  responsibilities    Json      @default("[]")
+  qualifications      Json      @default("[]")
+  benefits            Json      @default("[]")
+  customFields        Json      @default("[]") // Array of {id, label, type, required, options?}
+  notificationEmail   String?   // Override global NOTIFICATION_EMAIL per job
+  emailTemplate       Json?     // Custom email template config
+  salaryRange         String?
+  applicationDeadline DateTime?
+  contactEmail        String?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  applications CareerApplication[]
+
+  @@index([isActive])
+  @@index([department])
+  @@index([type])
+}
+
+model CareerApplication {
+  id              String            @id @default(cuid())
+  careerId        String
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  nationality     String?
+  address         String?
+  // Documents stored as uploaded file URLs
+  resumeUrl       String?           // CV/Resume file URL
+  coverLetterUrl  String?           // Cover letter file URL
+  idDocumentUrl   String?           // National ID / Passport
+  photoUrl        String?           // Passport-size photo
+  portfolioUrl    String?           // Portfolio / work samples
+  // Structured data
+  education       Json              @default("[]")
+  experience      Json              @default("[]")
+  // Custom field answers: {fieldId: value}
+  customAnswers   Json              @default("{}")
+  linkedinUrl     String?
+  status          ApplicationStatus @default(SUBMITTED)
+  notes           String?           @db.Text
+  reviewedById    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  career     Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  reviewedBy User?  @relation("CareerReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([careerId, status])
+  @@index([email])
+  @@index([status])
+  @@index([reviewedById])
+}
+
+// ════════════════════════════════════════════════════════════
+// PARTNER APPLICATIONS
+// ════════════════════════════════════════════════════════════
+
+enum PartnerAppStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model PartnerApplication {
+  id               String           @id @default(cuid())
+  organizationName String
+  contactName      String
+  email            String
+  phone            String?
+  website          String?
+  description      String           @db.Text
+  partnershipType  String
+  message          String?          @db.Text
+  status           PartnerAppStatus @default(PENDING)
+  reviewedById     String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  reviewedBy User? @relation("PartnerReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([email])
+  @@index([reviewedById])
+}
+
+// ════════════════════════════════════════════════════════════
+// FAQs
+// ════════════════════════════════════════════════════════════
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String   @db.Text
+  category  String   @default("general")
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, isActive, order])
+}
+
+// ════════════════════════════════════════════════════════════
+// SHARED CONTENT SECTIONS (reusable across pages)
+// ════════════════════════════════════════════════════════════
+
+model SharedSection {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  title     String
+  content   Json     @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ════════════════════════════════════════════════════════════
+// VOLUNTEER OPPORTUNITIES
+// ════════════════════════════════════════════════════════════
+
+model VolunteerOpportunity {
+  id           String    @id @default(cuid())
+  title        String
+  slug         String    @unique
+  department   String
+  location     String
+  commitment   String
+  description  String    @db.Text
+  requirements Json      @default("[]")
+  benefits     Json      @default("[]")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  applications VolunteerApplication[]
+
+  @@index([isActive])
+}
+
+enum VolunteerAppStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model VolunteerApplication {
+  id            String             @id @default(cuid())
+  opportunityId String
+  firstName     String
+  lastName      String
+  email         String
+  phone         String?
+  motivation    String?            @db.Text
+  availability  String?
+  skills        Json               @default("[]")
+  status        VolunteerAppStatus @default(SUBMITTED)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  opportunity VolunteerOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, status])
+  @@index([email])
+}
+
+// ════════════════════════════════════════════════════════════
+// PROJECTS
+// ════════════════════════════════════════════════════════════
+
+model Project {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  title        String
+  summary      String
+  body         Json          @default("[]")
+  coverMediaId String?
+  status       ContentStatus @default(DRAFT)
+  order        Int           @default(0)
+  seoTitle     String?
+  seoDesc      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+
+  cover Media? @relation("ProjectCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([order])
+}
+
+// ════════════════════════════════════════════════════════════
+// SITE VISITS (VISITOR TRACKING)
+// ════════════════════════════════════════════════════════════
+
+model SiteVisit {
+  id         String   @id @default(cuid())
+  path       String
+  referrer   String?
+  userAgent  String?
+  ip         String?
+  country    String?
+  city       String?
+  deviceType String?
+  browser    String?
+  os         String?
+  sessionId  String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path])
+  @@index([sessionId])
+}
+
+// ════════════════════════════════════════════════════════════
+// VIDEO POSTS (YouTube embeds with site analytics)
+// ════════════════════════════════════════════════════════════
+
+model VideoPost {
+  id          String   @id @default(cuid())
+  title       String
+  youtubeUrl  String
+  youtubeId   String
+  description String?  @db.Text
+  thumbnailUrl String?
+  category    String   @default("general")
+  order       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  views VideoView[]
+
+  @@index([isPublished, order])
+  @@index([category])
+}
+
+model VideoView {
+  id          String   @id @default(cuid())
+  videoId     String
+  sessionId   String?
+  watchedMs   Int      @default(0)
+  percentWatched Float  @default(0)
+  completed   Boolean  @default(false)
+  country     String?
+  deviceType  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  video VideoPost @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt])
+  @@index([sessionId])
+}
+
+// ════════════════════════════════════════════════════════════
+// CONTACT MESSAGES
+// ════════════════════════════════════════════════════════════
+
+model ContactMessage {
+  id        String    @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String    @db.Text
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([isRead, createdAt])
+}

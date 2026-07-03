@@ -1,0 +1,103 @@
+import { FlatCompat } from "./node_modules/.pnpm/node_modules/@eslint/eslintrc/lib/index.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const eslintConfig = [
+  {
+    ignores: [
+      ".next/**",
+      ".corepack/**",
+      "next-env.d.ts",
+      "node_modules/**",
+      "public/**",
+      "uploads/**",
+      "coverage/**",
+      "tsconfig.tsbuildinfo",
+    ],
+  },
+  ...compat.extends(
+    "next/core-web-vitals",
+    "next/typescript",
+    "plugin:jsx-a11y/recommended",
+  ),
+  {
+    plugins: {
+      boundaries: (await import("eslint-plugin-boundaries")).default,
+    },
+    settings: {
+      "boundaries/elements": [
+        { type: "apiRoute", pattern: ["app/api/**"] },
+        { type: "ui", pattern: ["app/**", "components/**"] },
+        { type: "actions", pattern: ["lib/actions/**"] },
+        { type: "services", pattern: ["lib/services/**"] },
+        { type: "inngest", pattern: ["lib/inngest/**"] },
+        { type: "tenant", pattern: ["lib/tenant/**"] },
+        { type: "rbac", pattern: ["lib/rbac/**"] },
+        { type: "validators", pattern: ["lib/validators/**"] },
+        { type: "mail", pattern: ["lib/mail/**"] },
+        { type: "crypto", pattern: ["lib/crypto/**"] },
+        { type: "storage", pattern: ["lib/storage/**"] },
+        { type: "blocks", pattern: ["lib/blocks/**"] },
+        { type: "theme", pattern: ["lib/theme/**"] },
+        { type: "observability", pattern: ["lib/observability/**"] },
+        { type: "ratelimit", pattern: ["lib/ratelimit/**"] },
+        { type: "featureFlags", pattern: ["lib/featureFlags/**"] },
+        { type: "shared", pattern: ["lib/errors.ts", "lib/cache.ts", "lib/auth-context.ts", "lib/i18n/**", "lib/utils/**"] },
+        { type: "auth", pattern: ["lib/auth.ts"] },
+        { type: "data", pattern: ["lib/db.ts", "prisma/**"] },
+      ],
+      "boundaries/ignore": ["**/*.test.ts", "**/*.test.tsx", "prisma/seed.ts", "prisma/seed/**"],
+    },
+    rules: {
+      "@typescript-eslint/no-unsafe-function-type": "off",
+      "boundaries/element-types": [
+        "error",
+        {
+          default: "disallow",
+          rules: [
+            { from: "ui", allow: ["ui", "actions", "services", "shared", "validators", "rbac", "auth", "blocks", "theme", "mail", "data", "tenant", "featureFlags", "observability", "ratelimit", "storage"] },
+            { from: "apiRoute", allow: ["services", "actions", "shared", "validators", "rbac", "auth", "inngest", "blocks", "theme", "mail", "data", "tenant", "featureFlags", "observability", "ratelimit", "storage", "crypto"] },
+            { from: "actions", allow: ["services", "shared", "validators", "rbac", "auth", "data", "ratelimit", "featureFlags", "storage"] },
+            { from: "services", allow: ["services", "data", "shared", "validators", "rbac", "tenant", "inngest", "auth", "mail", "crypto", "storage", "blocks", "theme", "observability", "featureFlags"] },
+            { from: "inngest", allow: ["services", "data", "shared", "validators", "tenant", "auth", "mail", "blocks", "inngest", "observability"] },
+            { from: "tenant", allow: ["data", "shared", "auth"] },
+            { from: "rbac", allow: ["data", "shared", "auth", "tenant"] },
+            { from: "auth", allow: ["data", "shared", "tenant"] },
+            { from: "validators", allow: ["shared", "blocks"] },
+            { from: "mail", allow: ["shared", "data", "tenant"] },
+            { from: "crypto", allow: ["shared"] },
+            { from: "storage", allow: ["shared"] },
+            { from: "blocks", allow: ["blocks", "shared", "data"] },
+            { from: "theme", allow: ["data", "shared"] },
+            { from: "observability", allow: ["shared", "observability"] },
+            { from: "ratelimit", allow: ["data", "shared", "observability"] },
+            { from: "featureFlags", allow: ["tenant", "shared", "data", "observability"] },
+            { from: "shared", allow: ["shared"] },
+            { from: "data", allow: ["shared"] },
+          ],
+        },
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/prisma/*", "../../prisma/*"],
+              message: "Do not import Prisma types/client from UI. Use services (lib/services/*) or lib/db.ts.",
+            },
+          ],
+        },
+      ],
+      "jsx-a11y/heading-has-content": ["error", { components: ["CardTitle"] }],
+    },
+  },
+];
+
+export default eslintConfig;

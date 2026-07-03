@@ -1,0 +1,310 @@
+"use client";
+
+import { useState, useOptimistic, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Pencil, Trash2, HelpCircle } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import dynamic from "next/dynamic";
+import {
+  ConfirmDialog,
+  ConfirmDialogTrigger,
+  ConfirmDialogContent,
+  ConfirmDialogHeader,
+  ConfirmDialogTitle,
+  ConfirmDialogDescription,
+  ConfirmDialogFooter,
+  ConfirmDialogAction,
+  ConfirmDialogCancel,
+} from "@/components/ui/ConfirmDialog";
+import {
+  createFaqAction,
+  updateFaqAction,
+  deleteFaqAction,
+  toggleFaqAction,
+} from "./actions";
+
+const RichTextEditor = dynamic(
+  () => import("@/components/ui/RichTextEditor").then((m) => ({ default: m.RichTextEditor })),
+  { ssr: false },
+);
+
+type Faq = {
+  id: string;
+  question: string;
+  answer: string;
+  category: string | null;
+  order: number;
+  isActive: boolean;
+};
+
+export function FaqsClient({ faqs }: { faqs: Faq[] }) {
+  const [editing, setEditing] = useState<Faq | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [answerHtml, setAnswerHtml] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [, startToggle] = useTransition();
+  const [optimisticFaqs, applyOptimisticToggle] = useOptimistic(
+    faqs,
+    (state, { id, isActive }: { id: string; isActive: boolean }) =>
+      state.map((f) => (f.id === id ? { ...f, isActive } : f)),
+  );
+
+  function openCreate() {
+    setEditing(null);
+    setAnswerHtml("");
+    setShowForm(true);
+  }
+
+  function openEdit(f: Faq) {
+    setEditing(f);
+    setAnswerHtml(f.answer);
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+    setAnswerHtml("");
+  }
+
+  async function handleSubmit(formData: FormData) {
+    setError(null);
+    formData.set("answer", answerHtml);
+    try {
+      if (editing) {
+        formData.set("id", editing.id);
+        await updateFaqAction(formData);
+      } else {
+        await createFaqAction(formData);
+      }
+      closeForm();
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    }
+  }
+
+  async function handleToggle(formData: FormData) {
+    setError(null);
+    const id = formData.get("id") as string;
+    const current = formData.get("isActive") === "true";
+    startToggle(async () => {
+      applyOptimisticToggle({ id, isActive: !current });
+      try {
+        await toggleFaqAction(formData);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong");
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      {error && (
+        <div role="alert" className="rounded-[var(--radius-md)] border border-[var(--color-danger)] bg-[rgb(var(--token-danger)/0.08)] p-3 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
+
+      <header className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">FAQs</h1>
+          <p className="text-sm text-[var(--color-muted-fg)]">
+            Manage frequently asked questions.
+          </p>
+        </div>
+        <Button size="sm" onClick={openCreate}>
+          <Plus className="h-4 w-4" /> Add FAQ
+        </Button>
+      </header>
+
+      {showForm && (
+        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-card)] p-6">
+          <h2 className="mb-4 text-lg font-semibold">
+            {editing ? "Edit FAQ" : "New FAQ"}
+          </h2>
+          <form action={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="question">Question *</Label>
+              <Input
+                id="question"
+                name="question"
+                required
+                defaultValue={editing?.question ?? ""}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Answer *</Label>
+              <RichTextEditor html={answerHtml} onChange={setAnswerHtml} />
+              <input type="hidden" name="answer" value={answerHtml} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Input
+                  id="category"
+                  name="category"
+                  defaultValue={editing?.category ?? ""}
+                  placeholder="e.g. General, Donations, Volunteering"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="order">Order</Label>
+                <Input
+                  id="order"
+                  name="order"
+                  type="number"
+                  min={0}
+                  defaultValue={editing?.order ?? 0}
+                />
+              </div>
+            </div>
+
+            {editing && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  name="isActive"
+                  defaultChecked={editing.isActive}
+                  className="h-4 w-4 rounded border-[var(--color-border)]"
+                />
+                <Label htmlFor="isActive">Active</Label>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button type="submit" size="sm">
+                {editing ? "Update" : "Create"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={closeForm}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-card)]">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-[var(--color-border)] bg-[rgb(var(--token-muted)/0.50)] text-left text-xs uppercase tracking-wider text-[var(--color-muted-fg)]">
+              <tr>
+                <th className="px-4 py-3">Question</th>
+                <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Order</th>
+                <th className="px-4 py-3">Active</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]">
+              {optimisticFaqs.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-10 text-center text-[var(--color-muted-fg)]"
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <HelpCircle className="h-8 w-8" />
+                      No FAQs yet.
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                optimisticFaqs.map((f) => (
+                  <tr key={f.id} className="group hover:bg-[rgb(var(--token-muted)/0.50)]">
+                    <td className="max-w-sm truncate px-4 py-3 font-medium">
+                      {f.question.length > 80
+                        ? f.question.slice(0, 80) + "..."
+                        : f.question}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-muted-fg)]">
+                      {f.category ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-muted-fg)]">
+                      {f.order}
+                    </td>
+                    <td className="px-4 py-3">
+                      <form action={handleToggle}>
+                        <input type="hidden" name="id" value={f.id} />
+                        <input
+                          type="hidden"
+                          name="isActive"
+                          value={String(f.isActive)}
+                        />
+                        <button
+                          type="submit"
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            f.isActive
+                              ? "bg-[rgb(var(--token-success)/0.20)] text-[var(--color-success)]"
+                              : "bg-[var(--color-muted)] text-[var(--color-muted-fg)]"
+                          }`}
+                        >
+                          {f.isActive ? "Active" : "Inactive"}
+                        </button>
+                      </form>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(f)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <ConfirmDialog>
+                          <ConfirmDialogTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Trash2 className="h-4 w-4 text-[var(--color-danger)]" />
+                            </Button>
+                          </ConfirmDialogTrigger>
+                          <ConfirmDialogContent>
+                            <ConfirmDialogHeader>
+                              <ConfirmDialogTitle>Delete FAQ</ConfirmDialogTitle>
+                              <ConfirmDialogDescription>
+                                Are you sure you want to delete this FAQ? This
+                                action cannot be undone.
+                              </ConfirmDialogDescription>
+                            </ConfirmDialogHeader>
+                            <ConfirmDialogFooter>
+                              <ConfirmDialogCancel>Cancel</ConfirmDialogCancel>
+                              <ConfirmDialogAction
+                                onClick={async () => {
+                                  setError(null);
+                                  try {
+                                    const fd = new FormData();
+                                    fd.set("id", f.id);
+                                    await deleteFaqAction(fd);
+                                    router.refresh();
+                                  } catch (e) {
+                                    setError(e instanceof Error ? e.message : "Delete failed");
+                                  }
+                                }}
+                              >
+                                Delete
+                              </ConfirmDialogAction>
+                            </ConfirmDialogFooter>
+                          </ConfirmDialogContent>
+                        </ConfirmDialog>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

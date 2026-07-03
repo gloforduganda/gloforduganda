@@ -1,0 +1,75 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+.pnpm-store/
+
+# testing
+coverage/
+playwright-report/
+test-results/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# prisma
+prisma/*.db
+prisma/*.db-journal
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# logs
+logs/
+*.log
+
+# Claude Code local config
+.claude/
+
+# Scratch area (not part of the repo)
+.tmp/
+
+# Mail server runtime data (never commit actual mail)
+mail/docker-data/dms/mail-data/
+mail/docker-data/dms/mail-state/
+mail/docker-data/dms/mail-logs/
+gloford-mail-dev/docker-data/dms/mail-data/
+gloford-mail-dev/docker-data/dms/mail-state/
+gloford-mail-dev/docker-data/dms/mail-logs/
+
+# Production env
+.env.production
