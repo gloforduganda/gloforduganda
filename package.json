@@ -6,7 +6,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "packageManager": "pnpm@10.0.0",
+  corepack enable
+corepack prepare pnpm@10.0.0 --activate
+pnpm --version,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
