@@ -102,7 +102,7 @@ export default async function ContactPage() {
                     {
                       icon: MapPin,
                       label: t("labelAddress"),
-                      value: contact.address ?? "Kampala, Uganda",
+                      value: contact.address ?? "Lira City, Uganda",
                       href: null,
                     },
                     {
