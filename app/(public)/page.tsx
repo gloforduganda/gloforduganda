@@ -43,9 +43,9 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://gloford.org";
 export const metadata: Metadata = {
   title: "Home",
   description:
-    "Gloford Foundation — strengthening communities through health, youth empowerment, climate resilience, and information access across Uganda.",
+    "GLOFORD Uganda — strengthening communities through health, youth empowerment, climate resilience, and information access across Uganda.",
   openGraph: {
-    title: "Gloford Foundation",
+    title: "GLOFORD Uganda",
     description:
       "Strengthening communities through health, youth empowerment, and climate resilience across Uganda.",
     type: "website",
