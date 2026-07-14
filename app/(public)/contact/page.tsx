@@ -96,8 +96,8 @@ export default async function ContactPage() {
                     {
                       icon: Phone,
                       label: t("labelPhone"),
-                      value: contact.phone ?? "+256 700 000000",
-                      href: `tel:${contact.phone ?? "+256700000000"}`,
+                      value: contact.phone ?? "+256 755 000283",
+                      href: `tel:${contact.phone ?? "+256 755 000283"}`,
                     },
                     {
                       icon: MapPin,
