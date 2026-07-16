@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     url: APP_URL,
     images: [{ url: "/logo.png", width: 512, height: 512, alt: "Gloford" }],
   },
-  twitter: { card: "summary_large_image", title: "Gloford Foundation", images: ["/logo.png"] },
+  twitter: { card: "summary_large_image", title: "GLOFORD Uganda", images: ["/logo.png"] },
 };
 
 export default async function HomePage() {
